@@ -1,0 +1,32 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "g0ZiFPR8LBg09AV1uAQ6O"
+uri = "file://artifacts/royal-kesar/public/images/saffron-closeup.png"
+type = "image"
+title = "Saffron close up gold"
+
+[[generated]]
+id = "VoDpqs7-O2xDrR4gRD5o_"
+uri = "file://artifacts/royal-kesar/public/images/walnuts.png"
+type = "image"
+title = "Walnuts dry fruits luxury"
+
+[[generated]]
+id = "8wVYwenksJDj3o0i3mBRg"
+uri = "file://artifacts/royal-kesar/public/images/pashmina.png"
+type = "image"
+title = "Pashmina shawl texture"
+
+[[generated]]
+id = "AvE3SZdUqHZ-9jTNN8QpE"
+uri = "file://artifacts/royal-kesar/public/images/hero-pampore.png"
+type = "image"
+title = "Kashmir Pampore fields"
+
+[[generated]]
+id = "YLOQnEyGtZqdffoGzmCvY"
+uri = "file://artifacts/royal-kesar/public/images/boutique-interior.png"
+type = "image"
+title = "Mughal boutique interior"

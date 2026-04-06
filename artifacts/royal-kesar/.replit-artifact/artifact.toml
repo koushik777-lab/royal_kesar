@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Royal Kesar Company"
+version = "1.0.0"
+id = "artifacts/royal-kesar"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 23329
+
+[services.development]
+run = "pnpm --filter @workspace/royal-kesar run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/royal-kesar", "run", "build" ]
+publicDir = "artifacts/royal-kesar/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23329"
+BASE_PATH = "/"
