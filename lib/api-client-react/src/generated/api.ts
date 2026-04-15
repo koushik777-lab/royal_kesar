@@ -29,6 +29,7 @@ import type {
   LoginBody,
   Order,
   Product,
+  RazorpayOrder,
   RegisterBody,
   StoreSummary,
   UpdateCartItemBody,
@@ -2237,3 +2238,83 @@ export function useGetFeaturedProducts<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Create a Razorpay order
+ */
+export const getCreateRazorpayOrderUrl = () => {
+  return `/api/orders/razorpay`;
+};
+
+export const createRazorpayOrder = async (
+  options?: RequestInit,
+): Promise<RazorpayOrder> => {
+  return customFetch<RazorpayOrder>(getCreateRazorpayOrderUrl(), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getCreateRazorpayOrderMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createRazorpayOrder>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createRazorpayOrder>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["createRazorpayOrder"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createRazorpayOrder>>,
+    void
+  > = () => {
+    return createRazorpayOrder(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateRazorpayOrderMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createRazorpayOrder>>
+>;
+export type CreateRazorpayOrderMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Create a Razorpay order
+ */
+export const useCreateRazorpayOrder = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createRazorpayOrder>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createRazorpayOrder>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getCreateRazorpayOrderMutationOptions(options));
+};

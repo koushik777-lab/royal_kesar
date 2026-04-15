@@ -154,6 +154,9 @@ export interface Order {
   shippingAddress: string;
   phone: string;
   paymentMethod: string;
+  razorpayOrderId?: string | null;
+  razorpayPaymentId?: string | null;
+  razorpaySignature?: string | null;
   notes?: string | null;
   createdAt: string;
 }
@@ -170,6 +173,9 @@ export interface CreateOrderBody {
   shippingAddress: string;
   phone: string;
   paymentMethod: CreateOrderBodyPaymentMethod;
+  razorpayOrderId?: string;
+  razorpayPaymentId?: string;
+  razorpaySignature?: string;
   notes?: string;
 }
 
@@ -211,3 +217,9 @@ export type ListProductsParams = {
   featured?: boolean;
   search?: string;
 };
+
+export interface RazorpayOrder {
+  id: string;
+  currency: string;
+  amount: number;
+}

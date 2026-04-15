@@ -1,6 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, productsTable, categoriesTable } from "@workspace/db";
-import { eq, ilike, and, sql } from "drizzle-orm";
+import { Product, Category } from "@workspace/db";
 import {
   CreateProductBody,
   ListProductsQueryParams,
@@ -44,37 +43,23 @@ router.get("/products", async (req, res): Promise<void> => {
 
   const { categoryId, featured, search } = query.data;
 
-  const conditions = [];
-  if (categoryId !== undefined) conditions.push(eq(productsTable.categoryId, categoryId));
-  if (featured !== undefined) conditions.push(eq(productsTable.featured, featured));
-  if (search) conditions.push(ilike(productsTable.name, `%${search}%`));
+  const filter: any = {};
+  if (categoryId !== undefined) filter.categoryId = categoryId;
+  if (featured !== undefined) filter.featured = featured;
+  if (search) filter.name = { $regex: search, $options: "i" };
 
-  const products = await db
-    .select({
-      id: productsTable.id,
-      name: productsTable.name,
-      slug: productsTable.slug,
-      description: productsTable.description,
-      price: productsTable.price,
-      originalPrice: productsTable.originalPrice,
-      imageUrl: productsTable.imageUrl,
-      images: productsTable.images,
-      categoryId: productsTable.categoryId,
-      categoryName: categoriesTable.name,
-      stock: productsTable.stock,
-      featured: productsTable.featured,
-      weight: productsTable.weight,
-      origin: productsTable.origin,
-      rating: productsTable.rating,
-      reviewCount: productsTable.reviewCount,
-      createdAt: productsTable.createdAt,
-    })
-    .from(productsTable)
-    .leftJoin(categoriesTable, eq(productsTable.categoryId, categoriesTable.id))
-    .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(productsTable.createdAt);
+  try {
+    const products = await Product.find(filter).sort({ createdAt: 1 });
+    
+    // Get category names
+    const categoryIds = [...new Set(products.map(p => p.categoryId))];
+    const categories = await Category.find({ id: { $in: categoryIds } });
+    const categoryMap = new Map(categories.map(c => [c.id, c.name]));
 
-  res.json(products.map((p) => mapProduct(p, p.categoryName ?? "")));
+    res.json(products.map((p) => mapProduct(p, categoryMap.get(p.categoryId) ?? "")));
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 router.post("/products", requireAdmin, async (req, res): Promise<void> => {
@@ -94,11 +79,14 @@ router.post("/products", requireAdmin, async (req, res): Promise<void> => {
     reviewCount: 0,
   };
 
-  const [product] = await db.insert(productsTable).values(data as any).returning();
+  try {
+    const product = await Product.create(data);
+    const cat = await Category.findOne({ id: product.categoryId });
 
-  const [cat] = await db.select().from(categoriesTable).where(eq(categoriesTable.id, product.categoryId));
-
-  res.status(201).json(mapProduct(product, cat?.name ?? ""));
+    res.status(201).json(mapProduct(product, cat?.name ?? ""));
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 router.get("/products/:id", async (req, res): Promise<void> => {
@@ -108,36 +96,19 @@ router.get("/products/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  const [product] = await db
-    .select({
-      id: productsTable.id,
-      name: productsTable.name,
-      slug: productsTable.slug,
-      description: productsTable.description,
-      price: productsTable.price,
-      originalPrice: productsTable.originalPrice,
-      imageUrl: productsTable.imageUrl,
-      images: productsTable.images,
-      categoryId: productsTable.categoryId,
-      categoryName: categoriesTable.name,
-      stock: productsTable.stock,
-      featured: productsTable.featured,
-      weight: productsTable.weight,
-      origin: productsTable.origin,
-      rating: productsTable.rating,
-      reviewCount: productsTable.reviewCount,
-      createdAt: productsTable.createdAt,
-    })
-    .from(productsTable)
-    .leftJoin(categoriesTable, eq(productsTable.categoryId, categoriesTable.id))
-    .where(eq(productsTable.id, params.data.id));
+  try {
+    const product = await Product.findOne({ id: params.data.id });
 
-  if (!product) {
-    res.status(404).json({ error: "Product not found" });
-    return;
+    if (!product) {
+      res.status(404).json({ error: "Product not found" });
+      return;
+    }
+
+    const cat = await Category.findOne({ id: product.categoryId });
+    res.json(mapProduct(product, cat?.name ?? ""));
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
-
-  res.json(mapProduct(product, product.categoryName ?? ""));
 });
 
 router.put("/products/:id", requireAdmin, async (req, res): Promise<void> => {
@@ -157,20 +128,23 @@ router.put("/products/:id", requireAdmin, async (req, res): Promise<void> => {
   if (data.price !== undefined) data.price = String(data.price);
   if (data.originalPrice !== undefined) data.originalPrice = String(data.originalPrice);
 
-  const [product] = await db
-    .update(productsTable)
-    .set(data)
-    .where(eq(productsTable.id, params.data.id))
-    .returning();
+  try {
+    const product = await Product.findOneAndUpdate(
+      { id: params.data.id },
+      { $set: data },
+      { new: true }
+    );
 
-  if (!product) {
-    res.status(404).json({ error: "Product not found" });
-    return;
+    if (!product) {
+      res.status(404).json({ error: "Product not found" });
+      return;
+    }
+
+    const cat = await Category.findOne({ id: product.categoryId });
+    res.json(mapProduct(product, cat?.name ?? ""));
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
-
-  const [cat] = await db.select().from(categoriesTable).where(eq(categoriesTable.id, product.categoryId));
-
-  res.json(mapProduct(product, cat?.name ?? ""));
 });
 
 router.delete("/products/:id", requireAdmin, async (req, res): Promise<void> => {
@@ -180,8 +154,12 @@ router.delete("/products/:id", requireAdmin, async (req, res): Promise<void> => 
     return;
   }
 
-  await db.delete(productsTable).where(eq(productsTable.id, params.data.id));
-  res.sendStatus(204);
+  try {
+    await Product.deleteOne({ id: params.data.id });
+    res.sendStatus(204);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 export default router;

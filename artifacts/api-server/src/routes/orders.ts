@@ -1,8 +1,9 @@
 import { Router, type IRouter } from "express";
-import { db, ordersTable, cartItemsTable, productsTable, usersTable } from "@workspace/db";
-import { eq, desc } from "drizzle-orm";
+import { Order, CartItem, Product, User } from "@workspace/db";
 import { CreateOrderBody, GetOrderParams, UpdateOrderStatusBody, UpdateOrderStatusParams } from "@workspace/api-zod";
 import { requireAuth, requireAdmin } from "../lib/auth";
+import { razorpay } from "../lib/razorpay";
+import crypto from "node:crypto";
 
 const router: IRouter = Router();
 
@@ -18,6 +19,9 @@ function mapOrder(order: any, user: any) {
     shippingAddress: order.shippingAddress,
     phone: order.phone,
     paymentMethod: order.paymentMethod,
+    razorpayOrderId: order.razorpayOrderId,
+    razorpayPaymentId: order.razorpayPaymentId,
+    razorpaySignature: order.razorpaySignature,
     notes: order.notes,
     createdAt: order.createdAt,
   };
@@ -26,23 +30,67 @@ function mapOrder(order: any, user: any) {
 router.get("/orders", requireAuth, async (req, res): Promise<void> => {
   const user = (req as any).user;
 
-  if (user.role === "admin") {
-    const orders = await db.select().from(ordersTable).orderBy(desc(ordersTable.createdAt));
-    const users = await db.select().from(usersTable);
-    const userMap: Record<number, any> = {};
-    for (const u of users) userMap[u.id] = u;
+  try {
+    if (user.role === "admin") {
+      const orders = await Order.find().sort({ createdAt: -1 });
+      const userIds = [...new Set(orders.map(o => o.userId))];
+      const users = await User.find({ id: { $in: userIds } });
+      const userMap = new Map(users.map(u => [u.id, u]));
 
-    res.json(orders.map((o) => mapOrder(o, userMap[o.userId])));
-    return;
+      res.json(orders.map((o) => mapOrder(o, userMap.get(o.userId))));
+      return;
+    }
+
+    const orders = await Order.find({ userId: user.id }).sort({ createdAt: -1 });
+    res.json(orders.map((o) => mapOrder(o, user)));
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
+});
 
-  const orders = await db
-    .select()
-    .from(ordersTable)
-    .where(eq(ordersTable.userId, user.id))
-    .orderBy(desc(ordersTable.createdAt));
+// Create Razorpay Order
+router.post("/orders/razorpay", requireAuth, async (req, res): Promise<void> => {
+  const user = (req as any).user;
 
-  res.json(orders.map((o) => mapOrder(o, user)));
+  try {
+    // Clean up any potential NaN products using raw collection to bypass Mongoose casting
+    await CartItem.collection.deleteMany({ userId: user.id, productId: NaN });
+
+    const userCartItems = await CartItem.find({ userId: user.id });
+    if (userCartItems.length === 0) {
+      res.status(400).json({ error: "Cart is empty" });
+      return;
+    }
+
+    const productIds = userCartItems.map(item => item.productId).filter(id => !isNaN(id) && id !== null);
+    const products = await Product.find({ id: { $in: productIds } });
+    const productMap = new Map(products.map(p => [p.id, p]));
+
+    const subtotal = userCartItems.reduce((sum, item) => {
+      const product = productMap.get(item.productId);
+      const price = parseFloat(product?.price ?? "0");
+      return sum + (price * item.quantity);
+    }, 0);
+
+    const shipping = 100;
+    const gst = subtotal * 0.18;
+    const finalTotal = subtotal + shipping + gst;
+
+    const options = {
+      amount: Math.round(finalTotal * 100), // amount in the smallest currency unit (paise)
+      currency: "INR",
+      receipt: `receipt_${Date.now()}`,
+    };
+
+    const razorpayOrder = await razorpay.orders.create(options);
+    res.json({
+      id: razorpayOrder.id,
+      amount: razorpayOrder.amount,
+      currency: razorpayOrder.currency,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 router.post("/orders", requireAuth, async (req, res): Promise<void> => {
@@ -53,51 +101,80 @@ router.post("/orders", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  const cartItems = await db
-    .select({
-      productId: cartItemsTable.productId,
-      quantity: cartItemsTable.quantity,
-      productName: productsTable.name,
-      imageUrl: productsTable.imageUrl,
-      price: productsTable.price,
-    })
-    .from(cartItemsTable)
-    .leftJoin(productsTable, eq(cartItemsTable.productId, productsTable.id))
-    .where(eq(cartItemsTable.userId, user.id));
+  try {
+    // 1. Verify Payment if online
+    if (parsed.data.paymentMethod === "online") {
+      const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = parsed.data;
+      
+      if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
+        res.status(400).json({ error: "Payment details missing" });
+        return;
+      }
 
-  if (cartItems.length === 0) {
-    res.status(400).json({ error: "Cart is empty" });
-    return;
-  }
+      const body = razorpayOrderId + "|" + razorpayPaymentId;
+      const expectedSignature = crypto
+        .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET || "")
+        .update(body.toString())
+        .digest("hex");
 
-  const items = cartItems.map((item) => ({
-    productId: item.productId,
-    productName: item.productName ?? "",
-    imageUrl: item.imageUrl,
-    price: parseFloat(item.price ?? "0"),
-    quantity: item.quantity,
-    subtotal: parseFloat(item.price ?? "0") * item.quantity,
-  }));
+      if (expectedSignature !== razorpaySignature) {
+        res.status(400).json({ error: "Invalid payment signature" });
+        return;
+      }
+    }
 
-  const total = items.reduce((sum, item) => sum + item.subtotal, 0);
+    // Clean up any potential NaN products using raw collection
+    await CartItem.collection.deleteMany({ userId: user.id, productId: NaN });
 
-  const [order] = await db
-    .insert(ordersTable)
-    .values({
+    const userCartItems = await CartItem.find({ userId: user.id });
+
+    if (userCartItems.length === 0) {
+      res.status(400).json({ error: "Cart is empty" });
+      return;
+    }
+
+    const productIds = userCartItems.map(item => item.productId).filter(id => !isNaN(id) && id !== null);
+    const products = await Product.find({ id: { $in: productIds } });
+    const productMap = new Map(products.map(p => [p.id, p]));
+
+    const items = userCartItems.map((item) => {
+      const product = productMap.get(item.productId);
+      const price = parseFloat(product?.price ?? "0");
+      return {
+        productId: item.productId,
+        productName: product?.name ?? "",
+        imageUrl: product?.imageUrl,
+        price,
+        quantity: item.quantity,
+        subtotal: price * item.quantity,
+      };
+    });
+
+    const subtotal = items.reduce((sum, item) => sum + item.subtotal, 0);
+    const shipping = 100;
+    const gst = subtotal * 0.18;
+    const finalTotal = subtotal + shipping + gst;
+
+    const order = await Order.create({
       userId: user.id,
       items,
-      total: String(total),
-      status: "pending",
+      total: String(finalTotal),
+      status: parsed.data.paymentMethod === "online" ? "confirmed" : "pending",
       shippingAddress: parsed.data.shippingAddress,
       phone: parsed.data.phone,
       paymentMethod: parsed.data.paymentMethod,
+      razorpayOrderId: parsed.data.razorpayOrderId,
+      razorpayPaymentId: parsed.data.razorpayPaymentId,
+      razorpaySignature: parsed.data.razorpaySignature,
       notes: parsed.data.notes,
-    })
-    .returning();
+    });
 
-  await db.delete(cartItemsTable).where(eq(cartItemsTable.userId, user.id));
+    await CartItem.deleteMany({ userId: user.id });
 
-  res.status(201).json(mapOrder(order, user));
+    res.status(201).json(mapOrder(order, user));
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 router.get("/orders/:id", requireAuth, async (req, res): Promise<void> => {
@@ -108,18 +185,23 @@ router.get("/orders/:id", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, params.data.id));
-  if (!order) {
-    res.status(404).json({ error: "Order not found" });
-    return;
-  }
+  try {
+    const order = await Order.findOne({ id: params.data.id });
+    if (!order) {
+      res.status(404).json({ error: "Order not found" });
+      return;
+    }
 
-  if (user.role !== "admin" && order.userId !== user.id) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
+    if (user.role !== "admin" && order.userId !== user.id) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
 
-  res.json(mapOrder(order, user));
+    const orderUser = user.id === order.userId ? user : await User.findOne({ id: order.userId });
+    res.json(mapOrder(order, orderUser));
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 router.put("/orders/:id", requireAdmin, async (req, res): Promise<void> => {
@@ -135,20 +217,24 @@ router.put("/orders/:id", requireAdmin, async (req, res): Promise<void> => {
     return;
   }
 
-  const [order] = await db
-    .update(ordersTable)
-    .set({ status: parsed.data.status })
-    .where(eq(ordersTable.id, params.data.id))
-    .returning();
+  try {
+    const order = await Order.findOneAndUpdate(
+      { id: params.data.id },
+      { $set: { status: parsed.data.status } },
+      { new: true }
+    );
 
-  if (!order) {
-    res.status(404).json({ error: "Order not found" });
-    return;
+    if (!order) {
+      res.status(404).json({ error: "Order not found" });
+      return;
+    }
+
+    const orderUser = await User.findOne({ id: order.userId });
+
+    res.json(mapOrder(order, orderUser));
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
-
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, order.userId));
-
-  res.json(mapOrder(order, user));
 });
 
 export default router;

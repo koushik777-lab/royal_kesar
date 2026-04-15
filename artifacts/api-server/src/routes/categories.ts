@@ -1,34 +1,36 @@
 import { Router, type IRouter } from "express";
-import { db, categoriesTable, productsTable } from "@workspace/db";
-import { eq, sql } from "drizzle-orm";
+import { Category, Product } from "@workspace/db";
 import { CreateCategoryBody, UpdateCategoryBody, UpdateCategoryParams, DeleteCategoryParams } from "@workspace/api-zod";
 import { requireAdmin } from "../lib/auth";
 
 const router: IRouter = Router();
 
 router.get("/categories", async (_req, res): Promise<void> => {
-  const categories = await db.select().from(categoriesTable).orderBy(categoriesTable.id);
+  try {
+    const categories = await Category.find().sort({ id: 1 });
 
-  const counts = await db
-    .select({ categoryId: productsTable.categoryId, count: sql<number>`count(*)::int` })
-    .from(productsTable)
-    .groupBy(productsTable.categoryId);
+    const counts = await Product.aggregate([
+      { $group: { _id: "$categoryId", count: { $sum: 1 } } }
+    ]);
 
-  const countMap: Record<number, number> = {};
-  for (const c of counts) {
-    countMap[c.categoryId] = c.count;
+    const countMap: Record<number, number> = {};
+    for (const c of counts) {
+      countMap[c._id] = c.count;
+    }
+
+    const result = categories.map((c) => ({
+      id: c.id,
+      name: c.name,
+      slug: c.slug,
+      description: c.description,
+      imageUrl: c.imageUrl,
+      productCount: countMap[c.id] ?? 0,
+    }));
+
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
-
-  const result = categories.map((c) => ({
-    id: c.id,
-    name: c.name,
-    slug: c.slug,
-    description: c.description,
-    imageUrl: c.imageUrl,
-    productCount: countMap[c.id] ?? 0,
-  }));
-
-  res.json(result);
 });
 
 router.post("/categories", requireAdmin, async (req, res): Promise<void> => {
@@ -38,16 +40,20 @@ router.post("/categories", requireAdmin, async (req, res): Promise<void> => {
     return;
   }
 
-  const [cat] = await db.insert(categoriesTable).values(parsed.data).returning();
+  try {
+    const cat = await Category.create(parsed.data);
 
-  res.status(201).json({
-    id: cat.id,
-    name: cat.name,
-    slug: cat.slug,
-    description: cat.description,
-    imageUrl: cat.imageUrl,
-    productCount: 0,
-  });
+    res.status(201).json({
+      id: cat.id,
+      name: cat.name,
+      slug: cat.slug,
+      description: cat.description,
+      imageUrl: cat.imageUrl,
+      productCount: 0,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 router.put("/categories/:id", requireAdmin, async (req, res): Promise<void> => {
@@ -63,30 +69,31 @@ router.put("/categories/:id", requireAdmin, async (req, res): Promise<void> => {
     return;
   }
 
-  const [cat] = await db
-    .update(categoriesTable)
-    .set(parsed.data)
-    .where(eq(categoriesTable.id, params.data.id))
-    .returning();
+  try {
+    const cat = await Category.findOneAndUpdate(
+      { id: params.data.id },
+      { $set: parsed.data },
+      { new: true }
+    );
 
-  if (!cat) {
-    res.status(404).json({ error: "Category not found" });
-    return;
+    if (!cat) {
+      res.status(404).json({ error: "Category not found" });
+      return;
+    }
+
+    const count = await Product.countDocuments({ categoryId: cat.id });
+
+    res.json({
+      id: cat.id,
+      name: cat.name,
+      slug: cat.slug,
+      description: cat.description,
+      imageUrl: cat.imageUrl,
+      productCount: count,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
-
-  const [countRow] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(productsTable)
-    .where(eq(productsTable.categoryId, cat.id));
-
-  res.json({
-    id: cat.id,
-    name: cat.name,
-    slug: cat.slug,
-    description: cat.description,
-    imageUrl: cat.imageUrl,
-    productCount: countRow?.count ?? 0,
-  });
 });
 
 router.delete("/categories/:id", requireAdmin, async (req, res): Promise<void> => {
@@ -96,8 +103,12 @@ router.delete("/categories/:id", requireAdmin, async (req, res): Promise<void> =
     return;
   }
 
-  await db.delete(categoriesTable).where(eq(categoriesTable.id, params.data.id));
-  res.sendStatus(204);
+  try {
+    await Category.deleteOne({ id: params.data.id });
+    res.sendStatus(204);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 export default router;

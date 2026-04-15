@@ -18,6 +18,7 @@ export function CartDrawer({ open, onOpenChange }: CartDrawerProps) {
   const { data: cart, isLoading } = useGetCart({
     query: {
       enabled: isAuthenticated && open,
+      queryKey: ["/api/cart"]
     }
   });
 
@@ -27,12 +28,12 @@ export function CartDrawer({ open, onOpenChange }: CartDrawerProps) {
 
   const handleUpdateQuantity = async (productId: number, quantity: number) => {
     if (quantity < 1) return;
-    await updateItem.mutateAsync({ id: productId, data: { quantity } });
+    await updateItem.mutateAsync({ productId, data: { quantity } });
     queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
   };
 
   const handleRemove = async (productId: number) => {
-    await removeItem.mutateAsync({ id: productId });
+    await removeItem.mutateAsync({ productId });
     queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
   };
 

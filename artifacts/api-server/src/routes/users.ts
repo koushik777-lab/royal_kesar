@@ -1,24 +1,27 @@
 import { Router, type IRouter } from "express";
-import { db, usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { User } from "@workspace/db";
 import { UpdateProfileBody } from "@workspace/api-zod";
 import { requireAuth, requireAdmin } from "../lib/auth";
 
 const router: IRouter = Router();
 
 router.get("/users", requireAdmin, async (_req, res): Promise<void> => {
-  const users = await db.select().from(usersTable).orderBy(usersTable.createdAt);
-  res.json(
-    users.map((u) => ({
-      id: u.id,
-      email: u.email,
-      name: u.name,
-      phone: u.phone,
-      address: u.address,
-      role: u.role,
-      createdAt: u.createdAt,
-    }))
-  );
+  try {
+    const users = await User.find().sort({ createdAt: 1 });
+    res.json(
+      users.map((u) => ({
+        id: u.id,
+        email: u.email,
+        name: u.name,
+        phone: u.phone,
+        address: u.address,
+        role: u.role,
+        createdAt: u.createdAt,
+      }))
+    );
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 router.put("/users/profile", requireAuth, async (req, res): Promise<void> => {
@@ -29,21 +32,30 @@ router.put("/users/profile", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  const [updated] = await db
-    .update(usersTable)
-    .set(parsed.data)
-    .where(eq(usersTable.id, user.id))
-    .returning();
+  try {
+    const updated = await User.findOneAndUpdate(
+      { id: user.id },
+      { $set: parsed.data },
+      { new: true }
+    );
 
-  res.json({
-    id: updated.id,
-    email: updated.email,
-    name: updated.name,
-    phone: updated.phone,
-    address: updated.address,
-    role: updated.role,
-    createdAt: updated.createdAt,
-  });
+    if (!updated) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    res.json({
+      id: updated.id,
+      email: updated.email,
+      name: updated.name,
+      phone: updated.phone,
+      address: updated.address,
+      role: updated.role,
+      createdAt: updated.createdAt,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 export default router;

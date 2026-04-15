@@ -1,5 +1,5 @@
 import { Layout } from "@/components/layout/layout";
-import { useGetCart, useCreateOrder, useGetMe } from "@workspace/api-client-react";
+import { useGetCart, useCreateOrder, useGetMe, useCreateRazorpayOrder } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,12 @@ import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { CheckCircle2 } from "lucide-react";
+
+declare global {
+  interface Window {
+    Razorpay: any;
+  }
+}
 
 const checkoutSchema = z.object({
   shippingAddress: z.string().min(10, "Please provide a complete shipping address"),
@@ -38,14 +44,21 @@ export default function Checkout() {
   }, [isAuthenticated, setLocation]);
 
   const { data: user } = useGetMe({
-    query: { enabled: isAuthenticated }
+    query: { 
+      enabled: isAuthenticated,
+      queryKey: ["/api/auth/me"]
+    }
   });
 
   const { data: cart, isLoading: isCartLoading } = useGetCart({
-    query: { enabled: isAuthenticated && !orderComplete }
+    query: { 
+      enabled: isAuthenticated && !orderComplete,
+      queryKey: ["/api/cart"]
+    }
   });
 
   const createOrder = useCreateOrder();
+  const createRazorpayOrder = useCreateRazorpayOrder();
 
   const form = useForm<CheckoutFormValues>({
     resolver: zodResolver(checkoutSchema),
@@ -65,8 +78,68 @@ export default function Checkout() {
     }
   }, [user, form]);
 
+  const handleRazorpayPayment = async (formData: CheckoutFormValues) => {
+    try {
+      const rzpOrder = await createRazorpayOrder.mutateAsync();
+      
+      const options = {
+        key: import.meta.env.VITE_RAZORPAY_KEY_ID,
+        amount: rzpOrder.amount,
+        currency: rzpOrder.currency,
+        name: "Royal Kesar Company",
+        description: "Premium Saffron & Dry Fruits",
+        order_id: rzpOrder.id,
+        handler: async (response: any) => {
+          try {
+            const order = await createOrder.mutateAsync({ 
+              data: {
+                ...formData,
+                razorpayOrderId: rzpOrder.id,
+                razorpayPaymentId: response.razorpay_payment_id,
+                razorpaySignature: response.razorpay_signature,
+              } 
+            });
+            
+            queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+            queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+            setOrderComplete({ id: order.id, total: order.total });
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          } catch (error: any) {
+             toast({
+              title: "Order Placement Failed",
+              description: error.message || "Payment verified but order creation failed.",
+              variant: "destructive"
+            });
+          }
+        },
+        prefill: {
+          name: user?.name,
+          email: user?.email,
+          contact: formData.phone
+        },
+        theme: {
+          color: "#D4AF37"
+        }
+      };
+
+      const rzp = new window.Razorpay(options);
+      rzp.open();
+    } catch (error: any) {
+      toast({
+        title: "Payment Error",
+        description: error.message || "Failed to initialize payment. Please try again.",
+        variant: "destructive"
+      });
+    }
+  };
+
   const onSubmit = async (data: CheckoutFormValues) => {
     if (!cart || cart.items.length === 0) return;
+
+    if (data.paymentMethod === "online") {
+      await handleRazorpayPayment(data);
+      return;
+    }
 
     try {
       const order = await createOrder.mutateAsync({ data });
@@ -126,6 +199,11 @@ export default function Checkout() {
 
   const items = cart?.items || [];
   const isEmpty = items.length === 0;
+
+  const subtotal = cart?.total || 0;
+  const shipping = items.length > 0 ? 100 : 0;
+  const gst = subtotal * 0.18;
+  const grandTotal = subtotal + shipping + gst;
 
   if (!isCartLoading && isEmpty) {
     setLocation("/cart");
@@ -282,17 +360,21 @@ export default function Checkout() {
               <div className="space-y-4 pt-6 border-t border-primary/10 mb-8">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Subtotal</span>
-                  <span className="font-serif">₹{cart?.total?.toLocaleString('en-IN')}</span>
+                  <span className="font-serif">₹{subtotal.toLocaleString('en-IN')}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">GST (18%)</span>
+                  <span className="font-serif">₹{gst.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Shipping</span>
-                  <span className="font-serif">Free</span>
+                  <span className="font-serif">₹{shipping.toLocaleString('en-IN')}</span>
                 </div>
               </div>
               
               <div className="border-t border-primary/20 pt-6 mb-8 flex justify-between items-center">
                 <span className="font-medium text-foreground uppercase tracking-widest">Total</span>
-                <span className="font-serif text-3xl text-gradient-gold">₹{cart?.total?.toLocaleString('en-IN')}</span>
+                <span className="font-serif text-3xl text-gradient-gold">₹{grandTotal.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
               </div>
               
               <Button 

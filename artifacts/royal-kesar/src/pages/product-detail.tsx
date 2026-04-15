@@ -38,6 +38,15 @@ export default function ProductDetail() {
       return;
     }
 
+    if (isNaN(productId) || productId <= 0) {
+      toast({
+        title: "Invalid Product",
+        description: "Could not identify the product. Please refresh the page.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     try {
       await addToCart.mutateAsync({
         data: {
@@ -80,7 +89,8 @@ export default function ProductDetail() {
   }
 
   const displayImage = selectedImage || product.imageUrl;
-  const allImages = [product.imageUrl, ...(product.images || [])].filter(Boolean) as string[];
+  const rawImages = [product.imageUrl, ...(product.images || [])].filter(img => img && img.trim() !== "") as string[];
+  const allImages = Array.from(new Set(rawImages));
 
   return (
     <Layout>

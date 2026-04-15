@@ -200,55 +200,60 @@ function KashmiriFloral({ className }: { className?: string }) {
 ──────────────────────────────────────────────────────────────────────────── */
 function GlassSphere({ className }: { className?: string }) {
   return (
+    // <motion.div
+    //   className={`relative ${className}`}
+    //   animate={{ rotate: 360 }}
+    //   transition={{ duration: 40, repeat: Infinity, ease: "linear" }}
+    // >
+    //   <svg viewBox="0 0 200 200" fill="none" className="w-full h-full drop-shadow-2xl">
+    //     <defs>
+    //       <radialGradient id="sphereGlass" cx="35%" cy="30%" r="70%">
+    //         <stop offset="0%" stopColor="#ffffff" stopOpacity="0.18" />
+    //         <stop offset="40%" stopColor="#D4AF37" stopOpacity="0.08" />
+    //         <stop offset="80%" stopColor="#C1440E" stopOpacity="0.05" />
+    //         <stop offset="100%" stopColor="#000000" stopOpacity="0.3" />
+    //       </radialGradient>
+    //       <radialGradient id="sphereInner" cx="50%" cy="50%" r="50%">
+    //         <stop offset="0%" stopColor="#D4AF37" stopOpacity="0.15" />
+    //         <stop offset="100%" stopColor="transparent" />
+    //       </radialGradient>
+    //       <filter id="sphereBlur">
+    //         <feGaussianBlur in="SourceGraphic" stdDeviation="0.5" />
+    //       </filter>
+    //     </defs>
+    //     {/* Outer sphere */}
+    //     <circle cx="100" cy="100" r="88" fill="url(#sphereGlass)" stroke="#D4AF37" strokeWidth="0.5" strokeOpacity="0.4" />
+    //     {/* Inner glow */}
+    //     <circle cx="100" cy="100" r="60" fill="url(#sphereInner)" />
+    //     {/* Saffron strand 1 */}
+    //     <motion.path
+    //       d="M70,80 Q100,100 130,85 Q150,75 160,100 Q150,125 130,115 Q100,100 70,120"
+    //       stroke="#C1440E"
+    //       strokeWidth="1.5"
+    //       strokeLinecap="round"
+    //       fill="none"
+    //       animate={{ pathLength: [0.6, 1, 0.6], opacity: [0.5, 0.9, 0.5] }}
+    //       transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+    //     />
+    //     {/* Saffron strand 2 */}
+    //     <motion.path
+    //       d="M80,120 Q110,95 120,110 Q135,130 110,135 Q85,140 80,120"
+    //       stroke="#D4AF37"
+    //       strokeWidth="1"
+    //       strokeLinecap="round"
+    //       fill="none"
+    //       animate={{ pathLength: [0.4, 1, 0.4], opacity: [0.4, 0.7, 0.4] }}
+    //       transition={{ duration: 8, repeat: Infinity, ease: "easeInOut", delay: 1 }}
+    //     />
+    //     {/* Highlight */}
+    //     <ellipse cx="75" cy="72" rx="18" ry="12" fill="white" fillOpacity="0.1" transform="rotate(-30 75 72)" />
+    //   </svg>
+    // </motion.div>
     <motion.div
       className={`relative ${className}`}
       animate={{ rotate: 360 }}
       transition={{ duration: 40, repeat: Infinity, ease: "linear" }}
-    >
-      <svg viewBox="0 0 200 200" fill="none" className="w-full h-full drop-shadow-2xl">
-        <defs>
-          <radialGradient id="sphereGlass" cx="35%" cy="30%" r="70%">
-            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.18" />
-            <stop offset="40%" stopColor="#D4AF37" stopOpacity="0.08" />
-            <stop offset="80%" stopColor="#C1440E" stopOpacity="0.05" />
-            <stop offset="100%" stopColor="#000000" stopOpacity="0.3" />
-          </radialGradient>
-          <radialGradient id="sphereInner" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#D4AF37" stopOpacity="0.15" />
-            <stop offset="100%" stopColor="transparent" />
-          </radialGradient>
-          <filter id="sphereBlur">
-            <feGaussianBlur in="SourceGraphic" stdDeviation="0.5" />
-          </filter>
-        </defs>
-        {/* Outer sphere */}
-        <circle cx="100" cy="100" r="88" fill="url(#sphereGlass)" stroke="#D4AF37" strokeWidth="0.5" strokeOpacity="0.4" />
-        {/* Inner glow */}
-        <circle cx="100" cy="100" r="60" fill="url(#sphereInner)" />
-        {/* Saffron strand 1 */}
-        <motion.path
-          d="M70,80 Q100,100 130,85 Q150,75 160,100 Q150,125 130,115 Q100,100 70,120"
-          stroke="#C1440E"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          fill="none"
-          animate={{ pathLength: [0.6, 1, 0.6], opacity: [0.5, 0.9, 0.5] }}
-          transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
-        />
-        {/* Saffron strand 2 */}
-        <motion.path
-          d="M80,120 Q110,95 120,110 Q135,130 110,135 Q85,140 80,120"
-          stroke="#D4AF37"
-          strokeWidth="1"
-          strokeLinecap="round"
-          fill="none"
-          animate={{ pathLength: [0.4, 1, 0.4], opacity: [0.4, 0.7, 0.4] }}
-          transition={{ duration: 8, repeat: Infinity, ease: "easeInOut", delay: 1 }}
-        />
-        {/* Highlight */}
-        <ellipse cx="75" cy="72" rx="18" ry="12" fill="white" fillOpacity="0.1" transform="rotate(-30 75 72)" />
-      </svg>
-    </motion.div>
+    > <img src="/images/kesar.png" alt="" />  </motion.div>
   );
 }
 
@@ -568,9 +573,9 @@ export default function Home() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {[
-              { title: "Premium Saffron", image: "https://images.unsplash.com/photo-1596040033229-a9821ebd058d?w=800", link: "/products?categoryId=1" },
-              { title: "Kashmiri Dry Fruits", image: "https://images.unsplash.com/photo-1627308595229-7830a5c91f9f?w=800", link: "/products?categoryId=2" },
-              { title: "Pashmina Shawls", image: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800", link: "/products?categoryId=3" }
+              { title: "Premium Saffron", image: "/images/saffron-closeup.png", link: "/products?categoryId=1" },
+              { title: "Kashmiri Dry Fruits", image: "/images/walnuts.png", link: "/products?categoryId=2" },
+              { title: "Pashmina Shawls", image: "/images/pashmina.png", link: "/products?categoryId=3" }
             ].map((cat, i) => (
               <motion.div
                 key={i}
@@ -627,8 +632,8 @@ export default function Home() {
                   <div className="h-4 bg-muted w-1/4" />
                 </div>
               ))
-            ) : (
-              featuredProducts?.map((product, i) => (
+            ) : Array.isArray(featuredProducts) ? (
+              featuredProducts.map((product, i) => (
                 <motion.div
                   key={product.id}
                   initial={{ opacity: 0, y: 40 }}
@@ -661,7 +666,7 @@ export default function Home() {
                   </Link>
                 </motion.div>
               ))
-            )}
+            ) : null}
           </div>
         </div>
       </section>

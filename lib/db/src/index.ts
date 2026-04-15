@@ -1,16 +1,28 @@
-import { drizzle } from "drizzle-orm/node-postgres";
-import pg from "pg";
-import * as schema from "./schema";
+import mongoose from "mongoose";
+import * as models from "./models";
 
-const { Pool } = pg;
+const MONGODB_URI = process.env.DATABASE_URL || "mongodb://localhost:27017/royal-kesar";
 
-if (!process.env.DATABASE_URL) {
+if (!MONGODB_URI) {
   throw new Error(
-    "DATABASE_URL must be set. Did you forget to provision a database?",
+    "DATABASE_URL (MongoDB URI) must be set. Defaulting to local if not provided.",
   );
 }
 
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-export const db = drizzle(pool, { schema });
+export async function connectDB() {
+  if (mongoose.connection.readyState >= 1) return;
+  
+  try {
+    await mongoose.connect(MONGODB_URI);
+    console.log("Connected to MongoDB successfully");
+  } catch (error) {
+    console.error("MongoDB connection error:", error);
+    process.exit(1);
+  }
+}
 
-export * from "./schema";
+// Ensure connection is established (useful for CLI/scripts, though Express usually calls it)
+// In a server environment, we usually call this in the entry point.
+
+export { models };
+export * from "./models";

@@ -1,34 +1,32 @@
 import { Router, type IRouter } from "express";
-import { db, cartItemsTable, productsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { CartItem, Product } from "@workspace/db";
 import { AddToCartBody, UpdateCartItemBody, UpdateCartItemParams, RemoveFromCartParams } from "@workspace/api-zod";
 import { requireAuth } from "../lib/auth";
 
 const router: IRouter = Router();
 
 async function buildCart(userId: number) {
-  const items = await db
-    .select({
-      productId: cartItemsTable.productId,
-      quantity: cartItemsTable.quantity,
-      productName: productsTable.name,
-      productSlug: productsTable.slug,
-      imageUrl: productsTable.imageUrl,
-      price: productsTable.price,
-    })
-    .from(cartItemsTable)
-    .leftJoin(productsTable, eq(cartItemsTable.productId, productsTable.id))
-    .where(eq(cartItemsTable.userId, userId));
+  // Clean up any potential NaN products using raw collection
+  await CartItem.collection.deleteMany({ userId, productId: NaN });
 
-  const cartItems = items.map((item) => ({
-    productId: item.productId,
-    productName: item.productName ?? "",
-    productSlug: item.productSlug ?? "",
-    imageUrl: item.imageUrl,
-    price: parseFloat(item.price ?? "0"),
-    quantity: item.quantity,
-    subtotal: parseFloat(item.price ?? "0") * item.quantity,
-  }));
+  const items = await CartItem.find({ userId });
+  const productIds = items.map(i => i.productId).filter(id => !isNaN(id) && id !== null);
+  const products = await Product.find({ id: { $in: productIds } });
+  const productMap = new Map(products.map(p => [p.id, p]));
+
+  const cartItems = items.map((item) => {
+    const product = productMap.get(item.productId);
+    const price = parseFloat(product?.price ?? "0");
+    return {
+      productId: item.productId,
+      productName: product?.name ?? "",
+      productSlug: product?.slug ?? "",
+      imageUrl: product?.imageUrl,
+      price,
+      quantity: item.quantity,
+      subtotal: price * item.quantity,
+    };
+  });
 
   const total = cartItems.reduce((sum, item) => sum + item.subtotal, 0);
   const itemCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
@@ -38,8 +36,12 @@ async function buildCart(userId: number) {
 
 router.get("/cart", requireAuth, async (req, res): Promise<void> => {
   const user = (req as any).user;
-  const cart = await buildCart(user.id);
-  res.json(cart);
+  try {
+    const cart = await buildCart(user.id);
+    res.json(cart);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 router.post("/cart", requireAuth, async (req, res): Promise<void> => {
@@ -52,29 +54,34 @@ router.post("/cart", requireAuth, async (req, res): Promise<void> => {
 
   const { productId, quantity } = parsed.data;
 
-  const [existing] = await db
-    .select()
-    .from(cartItemsTable)
-    .where(and(eq(cartItemsTable.userId, user.id), eq(cartItemsTable.productId, productId)));
+  try {
+    const existing = await CartItem.findOne({ userId: user.id, productId });
 
-  if (existing) {
-    await db
-      .update(cartItemsTable)
-      .set({ quantity: existing.quantity + quantity })
-      .where(eq(cartItemsTable.id, existing.id));
-  } else {
-    await db.insert(cartItemsTable).values({ userId: user.id, productId, quantity });
+    if (existing) {
+      await CartItem.updateOne(
+        { id: existing.id },
+        { $set: { quantity: existing.quantity + quantity } }
+      );
+    } else {
+      await CartItem.create({ userId: user.id, productId, quantity });
+    }
+
+    const cart = await buildCart(user.id);
+    res.json(cart);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
-
-  const cart = await buildCart(user.id);
-  res.json(cart);
 });
 
 router.put("/cart/:productId", requireAuth, async (req, res): Promise<void> => {
   const user = (req as any).user;
 
   const rawId = Array.isArray(req.params.productId) ? req.params.productId[0] : req.params.productId;
-  const productId = parseInt(rawId, 10);
+  const productId = parseInt(rawId as string, 10);
+  if (isNaN(productId)) {
+    res.status(400).json({ error: "Invalid product ID" });
+    return;
+  }
 
   const parsed = UpdateCartItemBody.safeParse(req.body);
   if (!parsed.success) {
@@ -84,39 +91,51 @@ router.put("/cart/:productId", requireAuth, async (req, res): Promise<void> => {
 
   const { quantity } = parsed.data;
 
-  if (quantity <= 0) {
-    await db
-      .delete(cartItemsTable)
-      .where(and(eq(cartItemsTable.userId, user.id), eq(cartItemsTable.productId, productId)));
-  } else {
-    await db
-      .update(cartItemsTable)
-      .set({ quantity })
-      .where(and(eq(cartItemsTable.userId, user.id), eq(cartItemsTable.productId, productId)));
-  }
+  try {
+    if (quantity <= 0) {
+      await CartItem.deleteOne({ userId: user.id, productId });
+    } else {
+      await CartItem.updateOne(
+        { userId: user.id, productId },
+        { $set: { quantity } }
+      );
+    }
 
-  const cart = await buildCart(user.id);
-  res.json(cart);
+    const cart = await buildCart(user.id);
+    res.json(cart);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 router.delete("/cart/:productId", requireAuth, async (req, res): Promise<void> => {
   const user = (req as any).user;
 
   const rawId = Array.isArray(req.params.productId) ? req.params.productId[0] : req.params.productId;
-  const productId = parseInt(rawId, 10);
+  const productId = parseInt(rawId as string, 10);
+  if (isNaN(productId)) {
+    res.status(400).json({ error: "Invalid product ID" });
+    return;
+  }
 
-  await db
-    .delete(cartItemsTable)
-    .where(and(eq(cartItemsTable.userId, user.id), eq(cartItemsTable.productId, productId)));
+  try {
+    await CartItem.deleteOne({ userId: user.id, productId });
 
-  const cart = await buildCart(user.id);
-  res.json(cart);
+    const cart = await buildCart(user.id);
+    res.json(cart);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 router.delete("/cart", requireAuth, async (req, res): Promise<void> => {
   const user = (req as any).user;
-  await db.delete(cartItemsTable).where(eq(cartItemsTable.userId, user.id));
-  res.json({ success: true });
+  try {
+    await CartItem.deleteMany({ userId: user.id });
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 export default router;

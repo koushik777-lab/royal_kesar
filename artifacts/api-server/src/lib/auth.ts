@@ -1,7 +1,6 @@
 import { createHash, randomBytes } from "crypto";
 import { Request, Response, NextFunction } from "express";
-import { db, usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { User } from "@workspace/db";
 
 export function hashPassword(password: string): string {
   const salt = "royal-kesar-salt-2024";
@@ -38,7 +37,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     res.status(401).json({ error: "Invalid token" });
     return;
   }
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+  const user = await User.findOne({ id: userId });
   if (!user) {
     res.status(401).json({ error: "User not found" });
     return;
@@ -64,7 +63,7 @@ export async function optionalAuth(req: Request, _res: Response, next: NextFunct
     const token = authHeader.slice(7);
     const userId = parseToken(token);
     if (userId) {
-      const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+      const user = await User.findOne({ id: userId });
       if (user) {
         (req as any).user = user;
       }

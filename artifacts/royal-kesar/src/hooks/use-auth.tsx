@@ -1,13 +1,14 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { useGetMe, useLogin, useLogout, useRegister, User, LoginBody, RegisterBody } from "@workspace/api-client-react";
+import { useGetMe, useLogin, useLogout, useRegister, User, LoginBody, RegisterBody, getGetMeQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
-  login: (data: LoginBody) => Promise<void>;
   register: (data: RegisterBody) => Promise<void>;
+  login: (data: LoginBody) => Promise<void>;
+  adminLogin: (data: LoginBody) => Promise<void>;
   logout: () => Promise<void>;
   isAuthenticated: boolean;
   isAdmin: boolean;
@@ -22,6 +23,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const { data: user, isLoading, refetch } = useGetMe({
     query: {
+      queryKey: getGetMeQueryKey(),
       enabled: !!token,
       retry: false,
     }
@@ -44,6 +46,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const response = await loginMutation.mutateAsync({ data });
       setToken(response.token);
+      localStorage.setItem("token", response.token);
       await refetch();
       toast({ title: "Welcome back", description: "Successfully logged in." });
     } catch (error: any) {
@@ -56,10 +59,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const adminLogin = async (data: LoginBody) => {
+    try {
+      const response = await fetch("/api/auth/admin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || "Login failed");
+      }
+      
+      setToken(result.token);
+      localStorage.setItem("token", result.token);
+      await refetch();
+      toast({ title: "Authorized", description: "Admin access granted." });
+    } catch (error: any) {
+      toast({ 
+        title: "Admin login failed", 
+        description: error.message || "Invalid admin credentials", 
+        variant: "destructive" 
+      });
+      throw error;
+    }
+  };
+
   const register = async (data: RegisterBody) => {
     try {
       const response = await registerMutation.mutateAsync({ data });
       setToken(response.token);
+      localStorage.setItem("token", response.token);
       await refetch();
       toast({ title: "Welcome", description: "Account created successfully." });
     } catch (error: any) {
@@ -88,8 +120,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         user: user || null,
         isLoading,
-        login,
         register,
+        login,
+        adminLogin,
         logout: logoutUser,
         isAuthenticated: !!user,
         isAdmin: user?.role === "admin",

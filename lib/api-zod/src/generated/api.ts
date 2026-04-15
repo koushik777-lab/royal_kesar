@@ -356,6 +356,9 @@ export const ListOrdersResponseItem = zod.object({
   shippingAddress: zod.string(),
   phone: zod.string(),
   paymentMethod: zod.string(),
+  razorpayOrderId: zod.string().nullish(),
+  razorpayPaymentId: zod.string().nullish(),
+  razorpaySignature: zod.string().nullish(),
   notes: zod.string().nullish(),
   createdAt: zod.coerce.date(),
 });
@@ -368,6 +371,9 @@ export const CreateOrderBody = zod.object({
   shippingAddress: zod.string(),
   phone: zod.string(),
   paymentMethod: zod.enum(["cod", "online"]),
+  razorpayOrderId: zod.string().optional(),
+  razorpayPaymentId: zod.string().optional(),
+  razorpaySignature: zod.string().optional(),
   notes: zod.string().optional(),
 });
 
@@ -404,6 +410,9 @@ export const GetOrderResponse = zod.object({
   shippingAddress: zod.string(),
   phone: zod.string(),
   paymentMethod: zod.string(),
+  razorpayOrderId: zod.string().nullish(),
+  razorpayPaymentId: zod.string().nullish(),
+  razorpaySignature: zod.string().nullish(),
   notes: zod.string().nullish(),
   createdAt: zod.coerce.date(),
 });
@@ -451,6 +460,9 @@ export const UpdateOrderStatusResponse = zod.object({
   shippingAddress: zod.string(),
   phone: zod.string(),
   paymentMethod: zod.string(),
+  razorpayOrderId: zod.string().nullish(),
+  razorpayPaymentId: zod.string().nullish(),
+  razorpaySignature: zod.string().nullish(),
   notes: zod.string().nullish(),
   createdAt: zod.coerce.date(),
 });
@@ -523,6 +535,9 @@ export const GetStoreSummaryResponse = zod.object({
       shippingAddress: zod.string(),
       phone: zod.string(),
       paymentMethod: zod.string(),
+      razorpayOrderId: zod.string().nullish(),
+      razorpayPaymentId: zod.string().nullish(),
+      razorpaySignature: zod.string().nullish(),
       notes: zod.string().nullish(),
       createdAt: zod.coerce.date(),
     }),
@@ -562,3 +577,12 @@ export const GetFeaturedProductsResponseItem = zod.object({
 export const GetFeaturedProductsResponse = zod.array(
   GetFeaturedProductsResponseItem,
 );
+
+/**
+ * @summary Create a Razorpay order
+ */
+export const CreateRazorpayOrderResponse = zod.object({
+  id: zod.string(),
+  currency: zod.string(),
+  amount: zod.number(),
+});
